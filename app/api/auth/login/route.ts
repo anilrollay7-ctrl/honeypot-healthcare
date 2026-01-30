@@ -15,6 +15,9 @@ import {
 } from '@/lib/advanced-security'
 import { createSession } from '@/lib/session-manager'
 import { logAudit } from '@/lib/audit-logger'
+import { logSecurityEventToFile, blockIPToFile, logUserActivity } from '@/lib/file-logger'
+import { createSecurityAlert, shouldBlockEmail } from '@/lib/security-alerts'
+import { blockUserByEmail, isEmailBlocked } from '@/lib/user-blocking'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-production'
 
@@ -69,12 +72,161 @@ export async function POST(request: NextRequest) {
                      request.headers.get('x-real-ip') || 
                      'unknown'
     const userAgent = request.headers.get('user-agent') || 'Unknown'
+    
+    // Check if email is blocked FIRST - before any authentication attempts
+    const blockStatus = await isEmailBlocked(email)
+    if (blockStatus.isBlocked) {
+      // SILENT LOGGING - Do not reveal block details to user
+      console.error('🚫 BLOCKED USER LOGIN ATTEMPT:', {
+        email,
+        ipAddress: clientIP,
+        blockReason: blockStatus.reason,
+        severity: blockStatus.severity,
+        expiresAt: blockStatus.expiresAt,
+        timestamp: new Date().toISOString()
+      })
+      
+      // Log to security events file (SILENT - not visible to user)
+      await logSecurityEventToFile({
+        id: `blocked_user_attempt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        timestamp: new Date().toISOString(),
+        type: 'blocked_user_attempt',
+        severity: 'critical',
+        ipAddress: clientIP,
+        userAgent,
+        details: {
+          email,
+          reason: 'Login attempt by blocked user',
+          blockReason: blockStatus.reason,
+          blockSeverity: blockStatus.severity,
+          expiresAt: blockStatus.expiresAt?.toISOString()
+        }
+      })
+      
+      // Log to user activity (SILENT - internal only)
+      await logUserActivity({
+        timestamp: new Date().toISOString(),
+        email,
+        action: 'blocked_login_attempt',
+        resource: 'authentication',
+        ipAddress: clientIP,
+        userAgent,
+        success: false,
+        details: { 
+          reason: 'User is blocked',
+          blockReason: blockStatus.reason,
+          blockSeverity: blockStatus.severity
+        }
+      })
+      
+      // Create security alert (SILENT - internal monitoring)
+      await createSecurityAlert({
+        email,
+        alertType: 'blocked_user_attempt',
+        severity: 'critical',
+        ipAddress: clientIP,
+        userAgent,
+        details: {
+          reason: 'Blocked user attempted login',
+          blockReason: blockStatus.reason,
+          blockSeverity: blockStatus.severity,
+          expiresAt: blockStatus.expiresAt?.toISOString()
+        }
+      })
+      
+      // Return generic error - DO NOT reveal block details to attacker
+      return NextResponse.json(
+        { error: 'Invalid email or password' },
+        { status: 401 }
+      )
+    }
 
     // Find user
     const user = await User.findOne({ email: email.toLowerCase() })
     if (!user) {
       // Record failed attempt
       const attempt = recordLoginAttempt(clientId, false)
+      
+      // Create security alert with honeypot classification
+      await createSecurityAlert({
+        email,
+        alertType: 'failed_login',
+        severity: attempt.attemptsLeft <= 1 ? 'high' : 'medium',
+        ipAddress: clientIP,
+        userAgent,
+        details: {
+          attemptCount: 6 - attempt.attemptsLeft,
+          reason: 'Login attempt with non-existent email',
+          action: 'Failed login attempt'
+        },
+        honeypot: {
+          interactionLevel: attempt.attemptsLeft <= 2 ? 'high' : 'low',
+          purpose: 'production',
+          category: 'credential',
+          threatTypes: ['brute_force', 'credential_stuffing', 'account_enumeration'],
+          trapPath: '/api/auth/login'
+        }
+      })
+      
+      // Log to honeypot events file
+      const { logHoneypotEventToFile } = require('@/lib/file-logger')
+      await logHoneypotEventToFile({
+        timestamp: new Date().toISOString(),
+        ipAddress: clientIP,
+        userAgent,
+        honeypotData: {
+          endpoint: '/api/auth/login',
+          trapType: 'credential',
+          interactionLevel: attempt.attemptsLeft <= 2 ? 'high' : 'low',
+          purpose: 'production',
+          category: 'credential',
+          threatTypes: ['brute_force', 'credential_stuffing', 'account_enumeration'],
+          method: 'POST',
+          description: `Failed login attempt: User not found (${6 - attempt.attemptsLeft} attempts)`
+        },
+        severity: attempt.attemptsLeft <= 1 ? 'critical' : 'medium',
+        blocked: attempt.attemptsLeft === 0
+      })
+      
+      // Log to file
+      await logSecurityEventToFile({
+        id: `failed_auth_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        timestamp: new Date().toISOString(),
+        type: 'failed_auth',
+        severity: attempt.attemptsLeft <= 1 ? 'high' : 'medium',
+        ipAddress: clientIP,
+        userAgent,
+        details: {
+          email,
+          reason: 'User not found',
+          attemptsLeft: attempt.attemptsLeft
+        }
+      })
+      
+      // Log activity
+      await logUserActivity({
+        timestamp: new Date().toISOString(),
+        email,
+        action: 'login_attempt',
+        resource: 'authentication',
+        ipAddress: clientIP,
+        userAgent,
+        success: false,
+        details: { reason: 'User not found', attemptsLeft: attempt.attemptsLeft }
+      })
+      
+      // Block if too many attempts
+      if (attempt.attemptsLeft === 0) {
+        await blockIPToFile(clientIP)
+        await blockUserByEmail({
+          email,
+          ipAddress: clientIP,
+          reason: 'Too many failed login attempts (5+)',
+          severity: 'temporary',
+          durationMinutes: 30
+        })
+      }
+      
       return NextResponse.json(
         { 
           error: 'Invalid email or password',
@@ -89,6 +241,48 @@ export async function POST(request: NextRequest) {
     if (!isValidPassword) {
       // Record failed attempt
       const attempt = recordLoginAttempt(clientId, false)
+      
+      // Create security alert with honeypot classification
+      await createSecurityAlert({
+        userId: (user as any)._id.toString(),
+        email,
+        alertType: 'failed_login',
+        severity: attempt.attemptsLeft <= 1 ? 'critical' : 'high',
+        ipAddress: clientIP,
+        userAgent,
+        details: {
+          attemptCount: 6 - attempt.attemptsLeft,
+          reason: 'Invalid password',
+          action: 'Failed login attempt'
+        },
+        honeypot: {
+          interactionLevel: attempt.attemptsLeft <= 1 ? 'high' : 'medium',
+          purpose: 'production',
+          category: 'credential',
+          threatTypes: ['password_brute_force', 'credential_cracking', 'unauthorized_access'],
+          trapPath: '/api/auth/login'
+        }
+      })
+      
+      // Log to honeypot events file
+      const { logHoneypotEventToFile: logHoneypot } = require('@/lib/file-logger')
+      await logHoneypot({
+        timestamp: new Date().toISOString(),
+        ipAddress: clientIP,
+        userAgent,
+        honeypotData: {
+          endpoint: '/api/auth/login',
+          trapType: 'credential',
+          interactionLevel: attempt.attemptsLeft <= 1 ? 'high' : 'medium',
+          purpose: 'production',
+          category: 'credential',
+          threatTypes: ['password_brute_force', 'credential_cracking', 'unauthorized_access'],
+          method: 'POST',
+          description: `Failed login: Invalid password (${6 - attempt.attemptsLeft} attempts)`
+        },
+        severity: attempt.attemptsLeft <= 1 ? 'critical' : 'high',
+        blocked: attempt.attemptsLeft === 0
+      })
       
       // Log failed login audit
       await logAudit({
@@ -106,6 +300,65 @@ export async function POST(request: NextRequest) {
         complianceCategory: 'authentication',
         severity: 'warning',
       })
+      
+      // Log to file
+      await logSecurityEventToFile({
+        id: `failed_auth_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        timestamp: new Date().toISOString(),
+        type: 'failed_auth',
+        severity: attempt.attemptsLeft <= 1 ? 'critical' : 'high',
+        ipAddress: clientIP,
+        userAgent,
+        details: {
+          userId: (user as any)._id.toString(),
+          email,
+          reason: 'Invalid password',
+          attemptsLeft: attempt.attemptsLeft
+        }
+      })
+      
+      // Log activity
+      await logUserActivity({
+        timestamp: new Date().toISOString(),
+        userId: (user as any)._id.toString(),
+        email,
+        action: 'login_attempt',
+        resource: 'authentication',
+        ipAddress: clientIP,
+        userAgent,
+        success: false,
+        details: { reason: 'Invalid password', attemptsLeft: attempt.attemptsLeft }
+      })
+      
+      // Block IP and user if too many attempts
+      if (attempt.attemptsLeft === 0) {
+        await blockIPToFile(clientIP)
+        
+        // Block user by email
+        await blockUserByEmail({
+          userId: (user as any)._id.toString(),
+          email,
+          ipAddress: clientIP,
+          reason: 'Too many failed login attempts (5+)',
+          severity: 'temporary',
+          durationMinutes: 30
+        })
+        
+        // Create account locked alert
+        await createSecurityAlert({
+          userId: (user as any)._id.toString(),
+          email,
+          alertType: 'account_locked',
+          severity: 'critical',
+          ipAddress: clientIP,
+          userAgent,
+          details: {
+            attemptCount: 5,
+            reason: 'Account locked due to 5+ failed login attempts',
+            action: 'Account temporarily blocked for 30 minutes'
+          }
+        })
+      }
       
       return NextResponse.json(
         { 
@@ -166,6 +419,35 @@ export async function POST(request: NextRequest) {
       complianceCategory: 'authentication',
       severity: 'info',
     })
+    
+    // Log successful login to file
+    await logSecurityEventToFile({
+      id: `login_success_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: new Date().toISOString(),
+      type: 'login_attempt',
+      severity: 'info',
+      ipAddress: clientIP,
+      userAgent,
+      details: {
+        userId: (user as any)._id.toString(),
+        email: user.email,
+        success: true,
+        sessionId
+      }
+    })
+    
+    // Log successful activity
+    await logUserActivity({
+      timestamp: new Date().toISOString(),
+      userId: (user as any)._id.toString(),
+      email: user.email,
+      action: 'login',
+      resource: 'authentication',
+      ipAddress: clientIP,
+      userAgent,
+      success: true,
+      details: { sessionId, role: user.role }
+    })
 
     // Remove password from response
     const userObject = user.toObject()
@@ -206,7 +488,7 @@ export async function POST(request: NextRequest) {
     response.cookies.set('auth-token', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict', // Changed to strict for better CSRF protection
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
       maxAge: 60 * 60 * 24 * 7, // 7 days
       path: '/'
     })
@@ -215,7 +497,7 @@ export async function POST(request: NextRequest) {
     response.cookies.set('refresh-token', refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
       maxAge: 60 * 60 * 24 * 30, // 30 days
       path: '/api/auth/refresh'
     })
@@ -224,7 +506,7 @@ export async function POST(request: NextRequest) {
     response.cookies.set('session-id', sessionId, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
       maxAge: 60 * 60 * 24 * 7, // 7 days
       path: '/'
     })

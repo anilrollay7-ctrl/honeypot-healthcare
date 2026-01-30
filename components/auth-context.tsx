@@ -22,6 +22,7 @@ export interface PatientProfile {
 interface AuthContextType {
   user: PatientProfile | null
   isLoggedIn: boolean
+  isLoading: boolean
   setUser: (user: PatientProfile | null) => void
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, profile: Omit<PatientProfile, 'id' | 'registeredDate'>) => Promise<void>
@@ -50,6 +51,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
     checkAuth()
+  }, [])
+  
+  // Separate effect for fetch interceptor (runs once)
+  useEffect(() => {
+    const originalFetch = window.fetch
+    
+    window.fetch = async (...args) => {
+      const response = await originalFetch(...args)
+      
+      // Skip /api/auth/me to prevent loops
+      const url = args[0] as string
+      if (url?.includes('/api/auth/me')) {
+        return response
+      }
+      
+      // Auto-logout if user is blocked (403) or rate limited (429)
+      if (response.status === 403 || response.status === 429) {
+        const data = await response.clone().json().catch(() => ({}))
+        
+        if (data.blocked || data.error?.includes('blocked') || data.error?.includes('Too many')) {
+          console.error('🚨 AUTO-LOGOUT: User blocked due to security violation')
+          console.error('Block details:', data)
+          
+          // Clear user state
+          setUser(null)
+          localStorage.removeItem('medicalPortalUser')
+          
+          // Show alert
+          alert(`Security Alert: ${data.error || 'Your account has been temporarily blocked due to suspicious activity'}\n\nReason: ${data.reason || 'Too many actions'}\n\nYou have been automatically logged out.`)
+          
+          // Redirect to login
+          window.location.href = '/auth/login'
+        }
+      }
+      
+      return response
+    }
+    
+    return () => {
+      window.fetch = originalFetch
+    }
   }, [])
 
   const login = async (email: string, password: string) => {
@@ -109,7 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isLoggedIn: !!user, setUser, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isLoggedIn: !!user, isLoading, setUser, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   )

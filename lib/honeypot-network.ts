@@ -2,36 +2,164 @@
 // Fake endpoints that only bots would access
 
 import { NextRequest, NextResponse } from 'next/server'
+import { logHoneypotEventToFile, blockIPToFile, logSecurityEventToFile } from './file-logger'
+import { createSecurityAlert } from './security-alerts'
+
+export type HoneypotInteractionLevel = 'low' | 'medium' | 'high'
+export type HoneypotPurpose = 'production' | 'research'
+export type HoneypotCategory = 'malware' | 'spam' | 'database' | 'spider' | 'credential' | 'admin' | 'api' | 'config'
 
 export interface HoneypotEndpoint {
   path: string
   method: string
   description: string
   trapType: 'admin' | 'api' | 'credential' | 'data' | 'config'
+  // Enhanced honeypot classification
+  interactionLevel: HoneypotInteractionLevel
+  purpose: HoneypotPurpose
+  category: HoneypotCategory
+  threatTypes: string[]
 }
 
-// List of honeypot trap endpoints
+// List of honeypot trap endpoints with enhanced classification
 export const HONEYPOT_ENDPOINTS: HoneypotEndpoint[] = [
-  // Admin traps
-  { path: '/api/admin/users/all', method: 'GET', description: 'Fake admin user list', trapType: 'admin' },
-  { path: '/api/admin/config', method: 'GET', description: 'Fake config endpoint', trapType: 'config' },
-  { path: '/api/admin/debug', method: 'GET', description: 'Fake debug endpoint', trapType: 'admin' },
-  { path: '/api/admin/logs', method: 'GET', description: 'Fake logs endpoint', trapType: 'admin' },
+  // Admin traps - High interaction, production
+  { 
+    path: '/api/admin/users/all', 
+    method: 'GET', 
+    description: 'Fake admin user list', 
+    trapType: 'admin',
+    interactionLevel: 'high',
+    purpose: 'production',
+    category: 'admin',
+    threatTypes: ['unauthorized_access', 'privilege_escalation', 'data_exfiltration']
+  },
+  { 
+    path: '/api/admin/config', 
+    method: 'GET', 
+    description: 'Fake config endpoint', 
+    trapType: 'config',
+    interactionLevel: 'medium',
+    purpose: 'production',
+    category: 'config',
+    threatTypes: ['configuration_disclosure', 'reconnaissance']
+  },
+  { 
+    path: '/api/admin/debug', 
+    method: 'GET', 
+    description: 'Fake debug endpoint', 
+    trapType: 'admin',
+    interactionLevel: 'medium',
+    purpose: 'production',
+    category: 'admin',
+    threatTypes: ['information_disclosure', 'debug_exploitation']
+  },
+  { 
+    path: '/api/admin/logs', 
+    method: 'GET', 
+    description: 'Fake logs endpoint', 
+    trapType: 'admin',
+    interactionLevel: 'high',
+    purpose: 'research',
+    category: 'admin',
+    threatTypes: ['log_tampering', 'forensic_evasion']
+  },
   
-  // Credential traps
-  { path: '/api/auth/admin', method: 'POST', description: 'Fake admin login', trapType: 'credential' },
-  { path: '/api/user/password', method: 'GET', description: 'Fake password endpoint', trapType: 'credential' },
-  { path: '/api/auth/token', method: 'GET', description: 'Fake token endpoint', trapType: 'credential' },
+  // Credential traps - High interaction
+  { 
+    path: '/api/auth/admin', 
+    method: 'POST', 
+    description: 'Fake admin login', 
+    trapType: 'credential',
+    interactionLevel: 'high',
+    purpose: 'production',
+    category: 'credential',
+    threatTypes: ['credential_stuffing', 'brute_force', 'phishing']
+  },
+  { 
+    path: '/api/user/password', 
+    method: 'GET', 
+    description: 'Fake password endpoint', 
+    trapType: 'credential',
+    interactionLevel: 'high',
+    purpose: 'production',
+    category: 'credential',
+    threatTypes: ['password_theft', 'credential_harvesting']
+  },
+  { 
+    path: '/api/auth/token', 
+    method: 'GET', 
+    description: 'Fake token endpoint', 
+    trapType: 'credential',
+    interactionLevel: 'medium',
+    purpose: 'production',
+    category: 'credential',
+    threatTypes: ['session_hijacking', 'token_theft']
+  },
   
-  // Data traps
-  { path: '/api/data/export-all', method: 'GET', description: 'Fake bulk export', trapType: 'data' },
-  { path: '/api/patients/all', method: 'GET', description: 'Fake patient list', trapType: 'data' },
-  { path: '/api/records/dump', method: 'GET', description: 'Fake database dump', trapType: 'data' },
+  // Database traps - High interaction
+  { 
+    path: '/api/data/export-all', 
+    method: 'GET', 
+    description: 'Fake bulk export', 
+    trapType: 'data',
+    interactionLevel: 'high',
+    purpose: 'production',
+    category: 'database',
+    threatTypes: ['sql_injection', 'data_exfiltration', 'mass_download']
+  },
+  { 
+    path: '/api/patients/all', 
+    method: 'GET', 
+    description: 'Fake patient list', 
+    trapType: 'data',
+    interactionLevel: 'high',
+    purpose: 'production',
+    category: 'database',
+    threatTypes: ['hipaa_violation', 'patient_data_theft']
+  },
+  { 
+    path: '/api/records/dump', 
+    method: 'GET', 
+    description: 'Fake database dump', 
+    trapType: 'data',
+    interactionLevel: 'high',
+    purpose: 'research',
+    category: 'database',
+    threatTypes: ['database_dumping', 'sql_injection']
+  },
   
-  // Config/Debug traps  
-  { path: '/.env', method: 'GET', description: 'Fake env file', trapType: 'config' },
-  { path: '/api/debug/sql', method: 'GET', description: 'Fake SQL debug', trapType: 'config' },
-  { path: '/api/health/detailed', method: 'GET', description: 'Fake detailed health', trapType: 'config' },
+  // Spider/Bot traps - Low interaction
+  { 
+    path: '/.env', 
+    method: 'GET', 
+    description: 'Fake env file', 
+    trapType: 'config',
+    interactionLevel: 'low',
+    purpose: 'production',
+    category: 'spider',
+    threatTypes: ['web_crawler', 'secret_scanning', 'config_theft']
+  },
+  { 
+    path: '/api/debug/sql', 
+    method: 'GET', 
+    description: 'Fake SQL debug', 
+    trapType: 'config',
+    interactionLevel: 'medium',
+    purpose: 'research',
+    category: 'database',
+    threatTypes: ['sql_injection', 'query_exploitation']
+  },
+  { 
+    path: '/api/health/detailed', 
+    method: 'GET', 
+    description: 'Fake detailed health', 
+    trapType: 'config',
+    interactionLevel: 'low',
+    purpose: 'production',
+    category: 'spider',
+    threatTypes: ['service_enumeration', 'reconnaissance']
+  },
 ]
 
 /**
@@ -87,7 +215,7 @@ export function generateHoneypotData(trapType: string): any {
 export async function logHoneypotTrap(
   request: NextRequest,
   endpoint: string,
-  trapType: string
+  honeypotEndpoint: HoneypotEndpoint
 ): Promise<void> {
   const ip = request.headers.get('x-forwarded-for') || 
              request.headers.get('x-real-ip') || 
@@ -97,12 +225,106 @@ export async function logHoneypotTrap(
   const trapData = {
     timestamp: new Date().toISOString(),
     endpoint,
-    trapType,
+    trapType: honeypotEndpoint.trapType,
+    interactionLevel: honeypotEndpoint.interactionLevel,
+    purpose: honeypotEndpoint.purpose,
+    category: honeypotEndpoint.category,
+    threatTypes: honeypotEndpoint.threatTypes,
     method: request.method,
     ip,
     userAgent,
     severity: 'critical',
-    threat: 'Attacker attempting unauthorized access'
+    threat: `${honeypotEndpoint.category.toUpperCase()} honeypot: ${honeypotEndpoint.description}`
+  }
+
+  // Log to file system
+  try {
+    console.log('🍯 HONEYPOT TRIGGERED!', {
+      endpoint,
+      category: honeypotEndpoint.category,
+      interactionLevel: honeypotEndpoint.interactionLevel,
+      threatTypes: honeypotEndpoint.threatTypes.join(', '),
+      ipAddress: ip,
+      userAgent: userAgent.substring(0, 50),
+      timestamp: trapData.timestamp
+    })
+    
+    await logHoneypotEventToFile({
+      timestamp: trapData.timestamp,
+      ipAddress: ip,
+      userAgent,
+      honeypotData: {
+        endpoint,
+        trapType: honeypotEndpoint.trapType,
+        interactionLevel: honeypotEndpoint.interactionLevel,
+        purpose: honeypotEndpoint.purpose,
+        category: honeypotEndpoint.category,
+        threatTypes: honeypotEndpoint.threatTypes,
+        method: request.method,
+        description: honeypotEndpoint.description
+      },
+      severity: 'critical',
+      blocked: true
+    })
+    
+    // Also log as security event with honeypot details
+    await logSecurityEventToFile({
+      id: `honeypot_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: trapData.timestamp,
+      type: 'honeypot_triggered',
+      severity: 'critical',
+      ipAddress: ip,
+      userAgent,
+      details: {
+        endpoint,
+        trapType: honeypotEndpoint.trapType,
+        honeypotCategory: honeypotEndpoint.category,
+        interactionLevel: honeypotEndpoint.interactionLevel,
+        purpose: honeypotEndpoint.purpose,
+        threatTypes: honeypotEndpoint.threatTypes,
+        method: request.method,
+        reason: `${honeypotEndpoint.category.toUpperCase()} honeypot triggered: ${honeypotEndpoint.description}`,
+        threat: `Detected ${honeypotEndpoint.threatTypes.join(', ')} attack patterns`
+      }
+    })
+    
+    // Block the IP address
+    await blockIPToFile(ip)
+    
+    // Create MongoDB security alert with full honeypot classification
+    try {
+      await createSecurityAlert({
+        email: 'honeypot@system.local',
+        alertType: 'honeypot_trigger',
+        severity: 'critical',
+        ipAddress: ip,
+        userAgent,
+        details: {
+          reason: `${honeypotEndpoint.category.toUpperCase()} honeypot triggered: ${honeypotEndpoint.description}`,
+          action: `Accessed ${endpoint}`,
+          threat: `Detected ${honeypotEndpoint.threatTypes.join(', ')} attack patterns`,
+          endpoint,
+          method: request.method
+        },
+        honeypot: {
+          interactionLevel: honeypotEndpoint.interactionLevel,
+          purpose: honeypotEndpoint.purpose,
+          category: honeypotEndpoint.category,
+          threatTypes: honeypotEndpoint.threatTypes,
+          trapPath: endpoint
+        }
+      })
+      console.log('✅ MongoDB security alert created with honeypot classification')
+    } catch (dbError) {
+      console.error('⚠️ Failed to create MongoDB security alert:', dbError)
+    }
+    
+    console.log('✅ Honeypot event logged successfully with classification:', {
+      category: honeypotEndpoint.category,
+      interactionLevel: honeypotEndpoint.interactionLevel
+    })
+  } catch (error) {
+    console.error('❌ Failed to log honeypot:', error)
   }
 
   // Log to security events API
@@ -118,7 +340,14 @@ export async function logHoneypotTrap(
         deviceInfo: { userAgent, platform: 'Unknown', language: 'Unknown' },
         behaviorMetrics: {},
         sessionData: { sessionId: 'honeypot', pageViews: 1, referrer: '' },
-        details: `Honeypot trap triggered: ${endpoint} (${trapType})`
+        details: `🍯 ${honeypotEndpoint.category.toUpperCase()} honeypot: ${honeypotEndpoint.description} (${honeypotEndpoint.interactionLevel} interaction)`,
+        honeypotData: {
+          interactionLevel: honeypotEndpoint.interactionLevel,
+          purpose: honeypotEndpoint.purpose,
+          category: honeypotEndpoint.category,
+          threatTypes: honeypotEndpoint.threatTypes,
+          trapPath: endpoint
+        }
       })
     })
   } catch (error) {

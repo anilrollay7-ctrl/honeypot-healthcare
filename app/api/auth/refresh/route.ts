@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
         response.cookies.set('auth-token', newTokenPair.accessToken, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
+          sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
           maxAge: 300, // 5 minutes
           path: '/',
         })
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
         response.cookies.set('refresh-token', newTokenPair.refreshToken, {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
-          sameSite: 'strict',
+          sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
           maxAge: 60 * 60 * 24 * 7, // 7 days
           path: '/',
         })
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
     response.cookies.set('auth-token', newAccessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
       maxAge: 60 * 60 * 24 * 7, // 7 days
       path: '/',
     })

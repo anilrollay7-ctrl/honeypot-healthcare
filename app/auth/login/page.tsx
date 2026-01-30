@@ -59,7 +59,10 @@ export default function LoginPage() {
         `Successful login for ${email}`
       )
 
-      router.push('/dashboard')
+      // Small delay to ensure state updates, then redirect
+      setTimeout(() => {
+        router.push('/dashboard')
+      }, 100)
     } catch (err) {
       const monitor = getSecurityMonitor()
       monitor.logEvent(

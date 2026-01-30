@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import jwt from 'jsonwebtoken'
 import connectDB from '@/lib/db'
 import { HealthUpdate } from '@/lib/models'
+import { withActionProtection } from '@/lib/api-protection'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-production'
 
@@ -20,30 +21,32 @@ function getUserFromToken(request: NextRequest) {
 
 // GET - Fetch all health updates (admin) or user-specific (regular user)
 export async function GET(request: NextRequest) {
-  try {
-    const user = getUserFromToken(request)
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  return withActionProtection(request, async (req) => {
+    try {
+      const user = getUserFromToken(req)
+      if (!user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+
+      await connectDB()
+      
+      // Admin can see all updates, users see only active updates
+      const query = user.role === 'admin' ? {} : { status: 'active' }
+      
+      const updates = await HealthUpdate.find(query)
+        .sort({ createdAt: -1 })
+        .lean()
+
+      return NextResponse.json({ success: true, updates })
+
+    } catch (error: any) {
+      console.error('Fetch health updates error:', error)
+      return NextResponse.json(
+        { error: 'Failed to fetch health updates', details: error.message },
+        { status: 500 }
+      )
     }
-
-    await connectDB()
-    
-    // Admin can see all updates, users see only active updates
-    const query = user.role === 'admin' ? {} : { status: 'active' }
-    
-    const updates = await HealthUpdate.find(query)
-      .sort({ createdAt: -1 })
-      .lean()
-
-    return NextResponse.json({ success: true, updates })
-
-  } catch (error: any) {
-    console.error('Fetch health updates error:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch health updates', details: error.message },
-      { status: 500 }
-    )
-  }
+  }, 'View Health Updates')
 }
 
 // POST - Create new health update (admin only)

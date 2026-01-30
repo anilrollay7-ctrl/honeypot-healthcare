@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken'
 import connectDB from '@/lib/db'
 import { Appointment } from '@/lib/models'
 import { logAudit } from '@/lib/audit-logger'
+import { withActionProtection } from '@/lib/api-protection'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-production'
 
@@ -21,8 +22,9 @@ function getUserFromToken(request: NextRequest) {
 
 // GET - Fetch all appointments for user with pagination and search
 export async function GET(request: NextRequest) {
+  return withActionProtection(request, async (req) => {
   try {
-    const user = getUserFromToken(request)
+    const user = getUserFromToken(req)
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -82,6 +84,7 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     )
   }
+  }, 'View Appointments')
 }
 
 // POST - Create new appointment

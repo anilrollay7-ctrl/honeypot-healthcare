@@ -10,15 +10,27 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const { isLoggedIn } = useAuth()
+  const { isLoggedIn, isLoading } = useAuth()
   const router = useRouter()
 
   useEffect(() => {
-    if (!isLoggedIn) {
+    if (!isLoading && !isLoggedIn) {
       router.push('/auth/login')
     }
-  }, [isLoggedIn, router])
+  }, [isLoggedIn, isLoading, router])
 
+  // Show loading while checking auth
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Redirect if not logged in
   if (!isLoggedIn) {
     return (
       <div className="min-h-screen flex items-center justify-center">

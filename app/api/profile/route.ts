@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken'
 import connectDB from '@/lib/db'
 import { User } from '@/lib/models'
 import { logAudit } from '@/lib/audit-logger'
+import { withActionProtection } from '@/lib/api-protection'
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-production'
 
@@ -21,29 +22,31 @@ function getUserFromToken(request: NextRequest) {
 
 // GET - Fetch user profile
 export async function GET(request: NextRequest) {
-  try {
-    const user = getUserFromToken(request)
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  return withActionProtection(request, async (req) => {
+    try {
+      const user = getUserFromToken(req)
+      if (!user) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
+
+      await connectDB()
+      
+      const userProfile = await User.findById(user.userId).select('-password -__v')
+      
+      if (!userProfile) {
+        return NextResponse.json({ error: 'User not found' }, { status: 404 })
+      }
+
+      return NextResponse.json({ success: true, user: userProfile })
+
+    } catch (error: any) {
+      console.error('Fetch profile error:', error)
+      return NextResponse.json(
+        { error: 'Failed to fetch profile', details: error.message },
+        { status: 500 }
+      )
     }
-
-    await connectDB()
-    
-    const userProfile = await User.findById(user.userId).select('-password -__v')
-    
-    if (!userProfile) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    }
-
-    return NextResponse.json({ success: true, user: userProfile })
-
-  } catch (error: any) {
-    console.error('Fetch profile error:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch profile', details: error.message },
-      { status: 500 }
-    )
-  }
+  }, 'View Profile')
 }
 
 // PATCH - Update user profile

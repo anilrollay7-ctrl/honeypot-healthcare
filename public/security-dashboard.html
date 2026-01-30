@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔒 Security Monitoring Dashboard - Real-Time</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #fff;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            animation: fadeInDown 0.8s ease-out;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .subtitle {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+            animation: fadeInUp 0.8s ease-out;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .stat-card h3 {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 15px;
+            opacity: 0.8;
+        }
+
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            opacity: 0.7;
+        }
+
+        .chart-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .chart-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .chart-card h3 {
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+        }
+
+        .activity-feed {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .activity-feed h3 {
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+        }
+
+        .activity-item {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            border-left: 4px solid #4ade80;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .activity-item.critical {
+            border-left-color: #ef4444;
+        }
+
+        .activity-item.warning {
+            border-left-color: #f59e0b;
+        }
+
+        .activity-time {
+            font-size: 0.8rem;
+            opacity: 0.7;
+            margin-bottom: 5px;
+        }
+
+        .activity-details {
+            font-size: 0.95rem;
+        }
+
+        .refresh-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: #4ade80;
+            color: #000;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 50px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 5px 20px rgba(74, 222, 128, 0.4);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .refresh-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 8px 30px rgba(74, 222, 128, 0.6);
+        }
+
+        .refresh-btn.spinning {
+            animation: spin 1s linear;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+
+        .status-active {
+            background: #4ade80;
+            color: #000;
+        }
+
+        .status-blocked {
+            background: #ef4444;
+            color: #fff;
+        }
+
+        .status-warning {
+            background: #f59e0b;
+            color: #000;
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .live-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            background: #4ade80;
+            border-radius: 50%;
+            margin-right: 10px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        .alert-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .alert-item {
+            background: rgba(239, 68, 68, 0.2);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 3px solid #ef4444;
+        }
+
+        .blocked-user {
+            background: rgba(239, 68, 68, 0.15);
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .timestamp {
+            font-size: 0.75rem;
+            opacity: 0.6;
+        }
+
+        /* Honeypot badges */
+        .honeypot-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: bold;
+            margin: 2px;
+        }
+
+        .honeypot-high {
+            background: #dc2626;
+            color: #fff;
+        }
+
+        .honeypot-medium {
+            background: #f59e0b;
+            color: #000;
+        }
+
+        .honeypot-low {
+            background: #10b981;
+            color: #000;
+        }
+
+        .honeypot-category {
+            background: rgba(139, 92, 246, 0.8);
+            color: #fff;
+        }
+
+        .honeypot-threat {
+            background: rgba(239, 68, 68, 0.6);
+            color: #fff;
+            font-size: 0.65rem;
+            padding: 2px 6px;
+        }
+
+        .honeypot-item {
+            background: rgba(139, 92, 246, 0.2);
+            border-left: 4px solid #8b5cf6;
+            padding: 10px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔒 Security Monitoring Dashboard</h1>
+            <p class="subtitle">
+                <span class="live-indicator"></span>
+                Real-Time Security Intelligence & Threat Detection
+            </p>
+            <p class="subtitle" id="lastUpdate"></p>
+        </header>
+
+        <!-- Statistics Grid -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>🛡️ Security Events</h3>
+                <div class="stat-value" id="totalEvents">0</div>
+                <div class="stat-label">Total security events logged</div>
+            </div>
+
+            <div class="stat-card">
+                <h3>🍯 Honeypot Triggers</h3>
+                <div class="stat-value" id="honeypotTriggers">0</div>
+                <div class="stat-label">Bot/attacker detections</div>
+                <div style="margin-top: 10px; font-size: 0.75rem; opacity: 0.8;">
+                    <div id="honeypotBreakdown"></div>
+                </div>
+            </div>
+
+            <div class="stat-card">
+                <h3>🚫 Blocked IPs</h3>
+                <div class="stat-value" id="blockedIPs">0</div>
+                <div class="stat-label">IP addresses blocked</div>
+            </div>
+
+            <div class="stat-card">
+                <h3>⚠️ Active Alerts</h3>
+                <div class="stat-value" id="activeAlerts">0</div>
+                <div class="stat-label">Unresolved security alerts</div>
+            </div>
+
+            <div class="stat-card">
+                <h3>👥 User Activities</h3>
+                <div class="stat-value" id="userActivities">0</div>
+                <div class="stat-label">Total user actions tracked</div>
+            </div>
+
+            <div class="stat-card">
+                <h3>🔒 Blocked Users</h3>
+                <div class="stat-value" id="blockedUsers">0</div>
+                <div class="stat-label">Users temporarily blocked</div>
+            </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3>📊 Threat Distribution</h3>
+                <canvas id="threatChart"></canvas>
+            </div>
+
+            <div class="chart-card">
+                <h3>📈 Activity Timeline (Last 24h)</h3>
+                <canvas id="timelineChart"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3>🎯 Severity Levels</h3>
+                <canvas id="severityChart"></canvas>
+            </div>
+
+            <div class="chart-card">
+                <h3>🌍 Top Threat Sources</h3>
+                <canvas id="ipChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Alerts & Activity Feeds -->
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3>🍯 Honeypot Analysis</h3>
+                <div id="honeypotAnalysis">
+                    <p style="opacity: 0.7; text-align: center;">No honeypot data</p>
+                </div>
+            </div>
+            
+            <div class="chart-card">
+                <h3>🚨 Recent Security Alerts</h3>
+                <div class="alert-list" id="alertsList">
+                    <p style="opacity: 0.7; text-align: center;">Loading alerts...</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="chart-grid">
+            <div class="chart-card">
+                <h3>🔒 Blocked Users List</h3>
+                <div class="alert-list" id="blockedUsersList">
+                    <p style="opacity: 0.7; text-align: center;">Loading blocked users...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Activity Feed -->
+        <div class="activity-feed">
+            <h3>📡 Live Activity Feed <span class="live-indicator"></span></h3>
+            <div id="activityFeed">
+                <p style="opacity: 0.7; text-align: center;">Loading recent activities...</p>
+            </div>
+        </div>
+    </div>
+
+    <button class="refresh-btn" onclick="refreshData()">🔄 Refresh Now</button>
+
+    <script>
+        console.log('📜 Script loaded successfully');
+        let charts = {};
+
+        // Initialize all charts
+        function initCharts() {
+            console.log('🎨 Initializing charts...');
+            
+            // Check if Chart.js is loaded
+            if (typeof Chart === 'undefined') {
+                console.error('❌ Chart.js is not loaded!');
+                throw new Error('Chart.js library failed to load');
+            }
+            
+            // Threat Distribution Chart
+            const threatCtx = document.getElementById('threatChart').getContext('2d');
+            charts.threat = new Chart(threatCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        data: [],
+                        backgroundColor: [
+                            '#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6', '#ec4899'
+                        ]
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: true, position: 'bottom', labels: { color: '#fff' } }
+                    }
+                }
+            });
+
+            // Timeline Chart
+            const timelineCtx = document.getElementById('timelineChart').getContext('2d');
+            charts.timeline = new Chart(timelineCtx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Security Events',
+                        data: [],
+                        borderColor: '#4ade80',
+                        backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { labels: { color: '#fff' } }
+                    },
+                    scales: {
+                        y: { ticks: { color: '#fff' }, grid: { color: 'rgba(255,255,255,0.1)' } },
+                        x: { ticks: { color: '#fff' }, grid: { color: 'rgba(255,255,255,0.1)' } }
+                    }
+                }
+            });
+
+            // Severity Chart
+            const severityCtx = document.getElementById('severityChart').getContext('2d');
+            charts.severity = new Chart(severityCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Low', 'Medium', 'High', 'Critical'],
+                    datasets: [{
+                        label: 'Events',
+                        data: [0, 0, 0, 0],
+                        backgroundColor: ['#10b981', '#f59e0b', '#ef4444', '#dc2626']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { ticks: { color: '#fff' }, grid: { color: 'rgba(255,255,255,0.1)' } },
+                        x: { ticks: { color: '#fff' }, grid: { color: 'rgba(255,255,255,0.1)' } }
+                    }
+                }
+            });
+
+            // IP Chart
+            const ipCtx = document.getElementById('ipChart').getContext('2d');
+            charts.ip = new Chart(ipCtx, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Threat Count',
+                        data: [],
+                        backgroundColor: '#ef4444'
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: { ticks: { color: '#fff' }, grid: { color: 'rgba(255,255,255,0.1)' } },
+                        x: { ticks: { color: '#fff' }, grid: { color: 'rgba(255,255,255,0.1)' } }
+                    }
+                }
+            });
+        }
+
+        // Fetch and display data
+        async function fetchData() {
+            try {
+                console.log('🔄 Fetching data from API...');
+                const response = await fetch('http://localhost:3000/api/security-dashboard');
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('📊 Dashboard Data:', data);
+                
+                if (data.success) {
+                    // Update stats first
+                    try {
+                        updateStats(data);
+                    } catch (e) {
+                        console.error('Stats update failed:', e);
+                    }
+                    
+                    // Then update other sections
+                    try {
+                        updateCharts(data);
+                    } catch (e) {
+                        console.error('Charts update failed:', e);
+                    }
+                    
+                    try {
+                        updateActivityFeed(data);
+                    } catch (e) {
+                        console.error('Activity feed update failed:', e);
+                    }
+                    
+                    try {
+                        updateAlerts(data);
+                    } catch (e) {
+                        console.error('Alerts update failed:', e);
+                    }
+                    
+                    try {
+                        updateBlockedUsers(data);
+                    } catch (e) {
+                        console.error('Blocked users update failed:', e);
+                    }
+                    
+                    try {
+                        updateHoneypotAnalysis(data);
+                    } catch (e) {
+                        console.error('Honeypot analysis update failed:', e);
+                    }
+                } else {
+                    console.error('❌ API returned success: false');
+                }
+            } catch (error) {
+                console.error('❌ Failed to fetch data:', error);
+                document.getElementById('totalEvents').textContent = 'Fetch Error';
+                document.getElementById('honeypotTriggers').textContent = 'Fetch Error';
+                document.getElementById('blockedIPs').textContent = 'Fetch Error';
+                document.getElementById('activeAlerts').textContent = 'Fetch Error';
+                document.getElementById('userActivities').textContent = 'Fetch Error';
+                document.getElementById('blockedUsers').textContent = 'Fetch Error';
+            }
+        }
+        
+        // Update alerts section
+        function updateAlerts(data) {
+            console.log('🚨 Updating alerts with data:', data);
+            const alertsList = document.getElementById('alertsList');
+            const alerts = data.alerts || [];
+            console.log('Alerts count:', alerts.length);
+            
+            if (alerts.length > 0) {
+                alertsList.innerHTML = alerts.slice(0, 10).map(alert => {
+                    const severity = alert.severity || 'low';
+                    const isCritical = severity === 'critical' || severity === 'high';
+                    const alertType = alert.type || 'unknown';
+                    const email = alert.email || 'Unknown';
+                    const message = alert.message || '';
+                    const createdAt = alert.createdAt ? new Date(alert.createdAt).toLocaleString() : 'Unknown time';
+                    
+                    // Check if this alert has honeypot data
+                    const honeypot = alert.honeypot;
+                    let honeypotBadges = '';
+                    if (honeypot) {
+                        const levelClass = `honeypot-${honeypot.interactionLevel || 'low'}`;
+                        const catClass = 'honeypot-category';
+                        honeypotBadges = `
+                            <br><span class="honeypot-badge ${levelClass}">${(honeypot.interactionLevel || 'low').toUpperCase()} Interaction</span>
+                            <span class="honeypot-badge ${catClass}">${(honeypot.category || 'unknown').toUpperCase()}</span>
+                            ${(honeypot.threatTypes || []).map(t => 
+                                `<span class="honeypot-badge honeypot-threat">${t}</span>`
+                            ).join(' ')}
+                        `;
+                    }
+                    
+                    return `
+                        <div class="activity-item ${isCritical ? 'critical' : 'warning'}">
+                            <div class="activity-time">${createdAt}</div>
+                            <div class="activity-details">
+                                <strong>${alertType.replace(/_/g, ' ').toUpperCase()}</strong>
+                                <span class="status-badge status-${severity}">${severity}</span>
+                                <br>${email}
+                                ${message ? ` - ${message}` : ''}
+                                ${honeypotBadges}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                console.log('✅ Alerts updated');
+            } else {
+                alertsList.innerHTML = '<p style="opacity: 0.7; text-align: center;">No security alerts</p>';
+                console.log('ℹ️ No alerts to display');
+            }
+        }
+        
+        // Update blocked users section
+        function updateBlockedUsers(data) {
+            console.log('🔒 Updating blocked users with data:', data);
+            const blockedUsersList = document.getElementById('blockedUsersList');
+            const blockedUsers = data.blockedUsers || [];
+            console.log('Blocked users count:', blockedUsers.length);
+            
+            if (blockedUsers.length > 0) {
+                blockedUsersList.innerHTML = blockedUsers.map(user => {
+                    const blockedAt = user.blockedAt ? new Date(user.blockedAt).toLocaleString() : 'Unknown time';
+                    const expiresText = user.isPermanent ? 'Never (Permanent)' : 
+                                       (user.expiresAt ? new Date(user.expiresAt).toLocaleString() : 'Unknown');
+                    
+                    return `
+                        <div class="activity-item critical">
+                            <div class="activity-time">Blocked: ${blockedAt}</div>
+                            <div class="activity-details">
+                                <strong>${user.email}</strong>
+                                <br>Reason: ${user.reason || 'No reason provided'}
+                                <br>Expires: ${expiresText}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                console.log('✅ Blocked users updated');
+            } else {
+                blockedUsersList.innerHTML = '<p style="opacity: 0.7; text-align: center;">No blocked users</p>';
+                console.log('ℹ️ No blocked users');
+            }
+        }
+
+        // Update honeypot breakdown
+        function updateHoneypotBreakdown(data) {
+            const honeypotEvents = data.logs?.honeypotEvents?.events || [];
+            const breakdown = document.getElementById('honeypotBreakdown');
+            
+            if (honeypotEvents.length === 0) {
+                breakdown.innerHTML = '<span style="opacity: 0.6;">No triggers yet</span>';
+                return;
+            }
+
+            // Count by category
+            const categories = {};
+            const interactions = {};
+            honeypotEvents.forEach(event => {
+                const cat = event.honeypotData?.category || 'unknown';
+                const level = event.honeypotData?.interactionLevel || 'unknown';
+                categories[cat] = (categories[cat] || 0) + 1;
+                interactions[level] = (interactions[level] || 0) + 1;
+            });
+
+            breakdown.innerHTML = Object.entries(categories).map(([cat, count]) => 
+                `<span class="honeypot-badge honeypot-category">${cat}: ${count}</span>`
+            ).join('') + '<br>' + Object.entries(interactions).map(([level, count]) => 
+                `<span class="honeypot-badge honeypot-${level}">${level}: ${count}</span>`
+            ).join('');
+        }
+
+        // Update honeypot analysis section
+        function updateHoneypotAnalysis(data) {
+            const honeypotEvents = data.logs?.honeypotEvents?.events || [];
+            const analysisDiv = document.getElementById('honeypotAnalysis');
+            
+            if (honeypotEvents.length === 0) {
+                analysisDiv.innerHTML = '<p style="opacity: 0.7; text-align: center;">No honeypot triggers detected</p>';
+                return;
+            }
+
+            analysisDiv.innerHTML = honeypotEvents.slice(0, 10).map(event => {
+                const hp = event.honeypotData || {};
+                const interactionClass = `honeypot-${hp.interactionLevel || 'low'}`;
+                const threats = hp.threatTypes || [];
+                
+                return `
+                    <div class="honeypot-item">
+                        <div class="activity-time">${new Date(event.timestamp).toLocaleString()}</div>
+                        <div class="activity-details">
+                            <strong>${hp.endpoint || 'Unknown'}</strong>
+                            <br>
+                            <span class="honeypot-badge ${interactionClass}">${(hp.interactionLevel || 'low').toUpperCase()} Interaction</span>
+                            <span class="honeypot-badge honeypot-category">${(hp.category || 'unknown').toUpperCase()}</span>
+                            <span class="status-badge status-${hp.purpose || 'production'}">${(hp.purpose || 'production').toUpperCase()}</span>
+                            <br>
+                            <strong>Threats:</strong> ${threats.map(t => 
+                                `<span class="honeypot-threat">${t.replace(/_/g, ' ')}</span>`
+                            ).join(' ')}
+                            <br>
+                            IP: ${event.ipAddress || 'Unknown'} | UA: ${(event.userAgent || 'Unknown').substring(0, 40)}...
+                            <br>
+                            <em style="opacity: 0.8;">${hp.description || 'Honeypot trap triggered'}</em>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+
+        // Update statistics
+        function updateStats(data) {
+            try {
+                console.log('📊 Updating stats with data:', data);
+                
+                // Get counts directly from summary
+                const summary = data.summary || {};
+                console.log('Summary object:', summary);
+                
+                const totalEvents = summary.securityEvents || 0;
+                const honeypotTriggers = summary.honeypotTriggers || 0;
+                const blockedIPsCount = summary.blockedIPs || 0;
+                const userActivities = summary.userActivities || 0;
+                const blockedUsersCount = summary.blockedUsers || 0;
+                const activeAlertsCount = summary.activeAlerts || 0;
+                
+                console.log('Stats:', { totalEvents, honeypotTriggers, blockedIPsCount, userActivities, blockedUsersCount, activeAlertsCount });
+                
+                // Update stat cards with error handling for each
+                try { document.getElementById('totalEvents').textContent = totalEvents; } catch(e) { console.error('Error updating totalEvents:', e); }
+                try { document.getElementById('honeypotTriggers').textContent = honeypotTriggers; } catch(e) { console.error('Error updating honeypotTriggers:', e); }
+                
+                // Update honeypot breakdown
+                updateHoneypotBreakdown(data);
+                
+                try { document.getElementById('blockedIPs').textContent = blockedIPsCount; } catch(e) { console.error('Error updating blockedIPs:', e); }
+                try { document.getElementById('userActivities').textContent = userActivities; } catch(e) { console.error('Error updating userActivities:', e); }
+                try { document.getElementById('blockedUsers').textContent = blockedUsersCount; } catch(e) { console.error('Error updating blockedUsers:', e); }
+                try { document.getElementById('activeAlerts').textContent = activeAlertsCount; } catch(e) { console.error('Error updating activeAlerts:', e); }
+                
+                document.getElementById('lastUpdate').textContent = `Last Updated: ${new Date().toLocaleTimeString()}`;
+                console.log('✅ Stats updated successfully');
+            } catch (error) {
+                console.error('❌ Error in updateStats:', error);
+                // Set fallback values
+                document.getElementById('totalEvents').textContent = '0';
+                document.getElementById('honeypotTriggers').textContent = '0';
+                document.getElementById('blockedIPs').textContent = '0';
+                document.getElementById('userActivities').textContent = '0';
+                document.getElementById('blockedUsers').textContent = '0';
+                document.getElementById('activeAlerts').textContent = '0';
+            }
+        }
+
+
+        // Update charts
+        function updateCharts(data) {
+            const events = data.logs.securityEvents?.events || [];
+            const threatAnalysis = data.logs.threatAnalysis || {};
+            
+            // Threat distribution - use threat analysis if available
+            if (threatAnalysis.threatsByType && Object.keys(threatAnalysis.threatsByType).length > 0) {
+                charts.threat.data.labels = Object.keys(threatAnalysis.threatsByType).map(k => k.replace(/_/g, ' '));
+                charts.threat.data.datasets[0].data = Object.values(threatAnalysis.threatsByType);
+            } else {
+                const threatTypes = {};
+                events.forEach(e => {
+                    threatTypes[e.type] = (threatTypes[e.type] || 0) + 1;
+                });
+                charts.threat.data.labels = Object.keys(threatTypes);
+                charts.threat.data.datasets[0].data = Object.values(threatTypes);
+            }
+            charts.threat.update();
+
+            // Severity distribution - use threat analysis if available
+            if (threatAnalysis.severityDistribution) {
+                const sev = threatAnalysis.severityDistribution;
+                charts.severity.data.datasets[0].data = [
+                    sev.low || 0, sev.medium || 0, sev.high || 0, sev.critical || 0
+                ];
+            } else {
+                const severityCounts = { low: 0, medium: 0, high: 0, critical: 0 };
+                events.forEach(e => {
+                    if (severityCounts[e.severity] !== undefined) {
+                        severityCounts[e.severity]++;
+                    }
+                });
+                charts.severity.data.datasets[0].data = [
+                    severityCounts.low, severityCounts.medium, severityCounts.high, severityCounts.critical
+                ];
+            }
+            charts.severity.update();
+
+            // Timeline (last 24 hours)
+            const hourly = new Array(24).fill(0);
+            const now = new Date();
+            events.forEach(e => {
+                const eventTime = new Date(e.timestamp);
+                const hoursDiff = Math.floor((now - eventTime) / (1000 * 60 * 60));
+                if (hoursDiff >= 0 && hoursDiff < 24) {
+                    hourly[23 - hoursDiff]++;
+                }
+            });
+            charts.timeline.data.labels = Array.from({length: 24}, (_, i) => `${i}h`);
+            charts.timeline.data.datasets[0].data = hourly;
+            charts.timeline.update();
+
+            // Top IPs - combine from blocked IPs and security events
+            const ipCounts = {};
+            events.forEach(e => {
+                if (e.ipAddress) {
+                    ipCounts[e.ipAddress] = (ipCounts[e.ipAddress] || 0) + 1;
+                }
+            });
+            
+            // Add blocked IPs
+            const blockedIPsList = data.logs.blockedIPs?.ips || [];
+            blockedIPsList.forEach(blocked => {
+                if (blocked.ip) {
+                    ipCounts[blocked.ip] = (ipCounts[blocked.ip] || 0) + 10; // Give blocked IPs higher weight
+                }
+            });
+            
+            const topIPs = Object.entries(ipCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+            charts.ip.data.labels = topIPs.length > 0 ? topIPs.map(([ip]) => ip) : ['No data'];
+            charts.ip.data.datasets[0].data = topIPs.length > 0 ? topIPs.map(([, count]) => count) : [0];
+            charts.ip.update();
+        }
+
+        // Update activity feed
+        function updateActivityFeed(data) {
+            const userActivities = data.logs.userActivities?.activities || [];
+            const securityEvents = data.logs.securityEvents?.events || [];
+            const feed = document.getElementById('activityFeed');
+            
+            // Combine user activities and security events
+            const allActivities = [
+                ...userActivities.map(a => ({...a, source: 'activity'})),
+                ...securityEvents.map(e => ({...e, source: 'security'}))
+            ].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+            
+            if (allActivities.length === 0) {
+                feed.innerHTML = '<p style="opacity: 0.7; text-align: center;">No recent activities</p>';
+                return;
+            }
+
+            const recentActivities = allActivities.slice(0, 20);
+            feed.innerHTML = recentActivities.map(item => {
+                if (item.source === 'activity') {
+                    const successClass = item.success ? '' : 'critical';
+                    return `
+                        <div class="activity-item ${successClass}">
+                            <div class="activity-time">${new Date(item.timestamp).toLocaleString()}</div>
+                            <div class="activity-details">
+                                <strong>${item.action.toUpperCase()}</strong>
+                                <span class="status-badge status-${item.success ? 'info' : 'critical'}">${item.success ? 'Success' : 'Failed'}</span>
+                                <br>${item.email || 'Unknown'}
+                                <br>IP: ${item.ipAddress}
+                                ${item.details?.blocked ? '<br><span style="color: #ef4444;">⚠️ User Blocked</span>' : ''}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    const severityClass = item.severity === 'critical' || item.severity === 'high' ? 'critical' : 
+                                         item.severity === 'medium' ? 'warning' : '';
+                    return `
+                        <div class="activity-item ${severityClass}">
+                            <div class="activity-time">${new Date(item.timestamp).toLocaleString()}</div>
+                            <div class="activity-details">
+                                <strong>${item.type.replace(/_/g, ' ').toUpperCase()}</strong>
+                                <span class="status-badge status-${item.severity}">${item.severity}</span>
+                                <br>${item.details?.email || item.ipAddress || 'Unknown'}
+                                ${item.details?.reason ? `<br>${item.details.reason}` : ''}
+                            </div>
+                        </div>
+                    `;
+                }
+            }).join('');
+        }
+
+        // Refresh data
+        function refreshData() {
+            const btn = document.querySelector('.refresh-btn');
+            btn.classList.add('spinning');
+            fetchData().then(() => {
+                setTimeout(() => btn.classList.remove('spinning'), 1000);
+            });
+        }
+
+        // Initialize
+        window.addEventListener('load', () => {
+            console.log('🚀 Dashboard initializing...');
+            
+            // Set loading state
+            document.getElementById('totalEvents').textContent = 'Loading...';
+            document.getElementById('honeypotTriggers').textContent = 'Loading...';
+            document.getElementById('blockedIPs').textContent = 'Loading...';
+            document.getElementById('activeAlerts').textContent = 'Loading...';
+            document.getElementById('userActivities').textContent = 'Loading...';
+            document.getElementById('blockedUsers').textContent = 'Loading...';
+            
+            try {
+                initCharts();
+                console.log('✅ Charts initialized');
+            } catch (error) {
+                console.error('💥 Chart initialization error:', error);
+                alert('Chart.js failed to load. Please refresh the page or check your internet connection.');
+                return;
+            }
+            
+            try {
+                fetchData();
+                console.log('✅ Initial fetch started');
+                // Auto-refresh every 10 seconds
+                setInterval(fetchData, 10000);
+                console.log('✅ Auto-refresh scheduled');
+            } catch (error) {
+                console.error('💥 Fetch error:', error);
+                document.getElementById('totalEvents').textContent = 'Error';
+                document.getElementById('honeypotTriggers').textContent = 'Error';
+                document.getElementById('blockedIPs').textContent = 'Error';
+                document.getElementById('activeAlerts').textContent = 'Error';
+                document.getElementById('userActivities').textContent = 'Error';
+                document.getElementById('blockedUsers').textContent = 'Error';
+            }
+        });
+    </script>
+</body>
+</html>
