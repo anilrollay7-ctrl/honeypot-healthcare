@@ -28,9 +28,7 @@ Preparing repository for GitHub
 - Remove local build artifacts and node modules before committing.
 - Use the included scripts:
 ```powershell
-.\clean-repo.ps1            # interactive cleaner
-.\prepare-to-push.ps1 -Force -RemoteUrl "https://github.com/sarwansai8/Team.git"   # one-step non-interactive
-```
+
 
 Security
 - Do not commit any `.env*` files. `.env.local` should remain local and is excluded by `.gitignore`.
